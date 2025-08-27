@@ -1,0 +1,9 @@
+# Core requirements only - for quick setup
+fastapi
+uvicorn[standard]
+python-multipart
+supabase
+python-dotenv
+pydantic
+pydantic-settings
+requests
