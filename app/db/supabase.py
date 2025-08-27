@@ -16,9 +16,10 @@ def get_supabase_client() -> Client:
     
     if _supabase_client is None:
         try:
+            # Create client without proxy parameter (not supported in newer versions)
             _supabase_client = create_client(
-                supabase_url=settings.SUPABASE_URL,
-                supabase_key=settings.SUPABASE_SERVICE_KEY
+                settings.SUPABASE_URL,
+                settings.SUPABASE_SERVICE_KEY
             )
             print(f"✅ Supabase client initialized successfully")
         except Exception as e:
