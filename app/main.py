@@ -1,21 +1,42 @@
 """Main FastAPI application."""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from app.core.config import settings
 from app.api.api_v1.api import api_router
 
 
-# Create FastAPI app
+# Custom middleware to handle trailing slashes without redirect
+class TrailingSlashMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Get the path
+        path = request.url.path
+        
+        # Skip if it's a root path or already has trailing slash
+        if path != "/" and not path.endswith("/"):
+            # Create a new scope with trailing slash added
+            request.scope["path"] = path + "/"
+        
+        response = await call_next(request)
+        return response
+
+
+# Create FastAPI app with redirect_slashes disabled to prevent automatic redirects
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     openapi_url="/openapi.json",
     docs_url="/docs",
     redoc_url="/redoc",
+    redirect_slashes=False,  # Disable automatic trailing slash redirects
 )
+
+# Add trailing slash middleware first (before CORS)
+app.add_middleware(TrailingSlashMiddleware)
 
 # Set up CORS
 app.add_middleware(
