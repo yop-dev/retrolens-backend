@@ -10,33 +10,15 @@ from app.core.config import settings
 from app.api.api_v1.api import api_router
 
 
-# Custom middleware to handle trailing slashes without redirect
-class TrailingSlashMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        # Get the path
-        path = request.url.path
-        
-        # Skip if it's a root path or already has trailing slash
-        if path != "/" and not path.endswith("/"):
-            # Create a new scope with trailing slash added
-            request.scope["path"] = path + "/"
-        
-        response = await call_next(request)
-        return response
-
-
-# Create FastAPI app with redirect_slashes disabled to prevent automatic redirects
+# Create FastAPI app - re-enable redirect_slashes to handle both with and without trailing slash
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     openapi_url="/openapi.json",
     docs_url="/docs",
     redoc_url="/redoc",
-    redirect_slashes=False,  # Disable automatic trailing slash redirects
+    redirect_slashes=True,  # Allow handling both with and without trailing slash
 )
-
-# Add trailing slash middleware first (before CORS)
-app.add_middleware(TrailingSlashMiddleware)
 
 # Set up CORS
 app.add_middleware(
