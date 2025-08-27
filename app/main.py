@@ -12,9 +12,9 @@ from app.api.api_v1.api import api_router
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    docs_url=f"{settings.API_V1_STR}/docs",
-    redoc_url=f"{settings.API_V1_STR}/redoc",
+    openapi_url="/openapi.json",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 # Set up CORS
@@ -41,6 +41,31 @@ async def root():
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "version": settings.VERSION}
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Run on application startup."""
+    print("\n" + "="*50)
+    print("🚀 RetroLens API Starting...")
+    print("="*50)
+    print(f"Version: {settings.VERSION}")
+    print(f"Debug: {settings.DEBUG}")
+    print(f"CORS Origins: {settings.BACKEND_CORS_ORIGINS}")
+    print(f"API Docs: {settings.API_V1_STR}/docs")
+    print(f"Supabase URL: {settings.SUPABASE_URL}")
+    print(f"Clerk Domain: {settings.CLERK_DOMAIN or 'Not configured'}")
+    
+    # Test Supabase connection (lazy - won't fail startup)
+    try:
+        from app.db.supabase import get_supabase_client
+        client = get_supabase_client()
+        print("✅ Supabase connection successful")
+    except Exception as e:
+        print(f"⚠️  Supabase connection failed: {e}")
+        print("   API will continue but database operations may fail")
+    
+    print("="*50 + "\n")
 
 
 # Include API router
