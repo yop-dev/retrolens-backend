@@ -12,7 +12,10 @@ sqlalchemy==2.0.25
 
 # Authentication
 python-jose[cryptography]==3.3.0
+PyJWT==2.8.0
+cryptography==41.0.7
 passlib[bcrypt]==1.7.4
+bcrypt==4.1.2
 
 # Environment and Config
 python-dotenv==1.0.0
