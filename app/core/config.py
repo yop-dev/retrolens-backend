@@ -1,8 +1,9 @@
 """Configuration settings for the RetroLens backend."""
 
 import json
+import sys
 from typing import List, Union, Optional
-from pydantic import field_validator, ConfigDict
+from pydantic import field_validator, ConfigDict, ValidationError
 from pydantic_settings import BaseSettings
 
 
@@ -56,4 +57,23 @@ class Settings(BaseSettings):
     )
 
 
-settings = Settings()
+try:
+    settings = Settings()
+except ValidationError as e:
+    print("\n" + "="*50)
+    print("CONFIGURATION ERROR")
+    print("="*50)
+    print("\nMissing or invalid environment variables:")
+    for error in e.errors():
+        field = error['loc'][0] if error['loc'] else 'unknown'
+        print(f"  - {field}: {error['msg']}")
+    print("\nPlease set the required environment variables in Railway.")
+    print("\nRequired variables:")
+    print("  - SUPABASE_URL")
+    print("  - SUPABASE_ANON_KEY")
+    print("  - SUPABASE_SERVICE_KEY")
+    print("  - SUPABASE_PROJECT_ID")
+    print("  - SECRET_KEY (generate a secure key!)")
+    print("  - BACKEND_CORS_ORIGINS")
+    print("\n" + "="*50 + "\n")
+    sys.exit(1)
