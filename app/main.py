@@ -10,14 +10,14 @@ from app.core.config import settings
 from app.api.api_v1.api import api_router
 
 
-# Create FastAPI app - disable redirect_slashes to prevent CORS issues
+# Create FastAPI app
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     openapi_url="/openapi.json",
     docs_url="/docs",
     redoc_url="/redoc",
-    redirect_slashes=False,  # Disable to prevent CORS preflight failures
+    # redirect_slashes=True is the default and handles both /path and /path/
 )
 
 # Set up CORS
