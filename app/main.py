@@ -17,7 +17,7 @@ app = FastAPI(
     openapi_url="/openapi.json",
     docs_url="/docs",
     redoc_url="/redoc",
-    # redirect_slashes=True is the default and handles both /path and /path/
+    redirect_slashes=False,  # Disable to prevent HTTPS->HTTP redirect issues with proxies
 )
 
 # Set up CORS
