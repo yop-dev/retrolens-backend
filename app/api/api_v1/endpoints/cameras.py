@@ -1,6 +1,6 @@
 """Camera endpoints - simplified for initial testing."""
 
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 from app.db.supabase import supabase_client
@@ -12,11 +12,20 @@ router = APIRouter()
 @router.get("/", response_model=List[CameraPublic])
 async def list_cameras(
     limit: int = Query(default=20, le=100),
-    offset: int = Query(default=0, ge=0)
+    offset: int = Query(default=0, ge=0),
+    sortBy: Optional[str] = Query(default="created_at"),
+    sortOrder: Optional[str] = Query(default="desc")
 ):
     """List all public cameras."""
     try:
-        result = supabase_client.table("cameras").select("*").eq("is_public", True).range(offset, offset + limit - 1).execute()
+        # Validate sort parameters
+        valid_sort_fields = ["created_at", "updated_at", "brand_name", "model", "view_count"]
+        if sortBy not in valid_sort_fields:
+            sortBy = "created_at"
+        
+        desc = sortOrder.lower() == "desc"
+        
+        result = supabase_client.table("cameras").select("*").eq("is_public", True).order(sortBy, desc=desc).range(offset, offset + limit - 1).execute()
         return result.data if result.data else []
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

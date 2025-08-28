@@ -11,11 +11,20 @@ router = APIRouter()
 @router.get("/")
 async def list_discussions(
     limit: int = Query(default=20, le=100),
-    offset: int = Query(default=0, ge=0)
+    offset: int = Query(default=0, ge=0),
+    sortBy: Optional[str] = Query(default="created_at"),
+    sortOrder: Optional[str] = Query(default="desc")
 ):
     """List all discussions."""
     try:
-        result = supabase_client.table("discussions").select("*").order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+        # Validate sort parameters
+        valid_sort_fields = ["created_at", "updated_at", "title", "view_count"]
+        if sortBy not in valid_sort_fields:
+            sortBy = "created_at"
+        
+        desc = sortOrder.lower() == "desc"
+        
+        result = supabase_client.table("discussions").select("*").order(sortBy, desc=desc).range(offset, offset + limit - 1).execute()
         
         # Map database 'body' field to 'content' for API response
         discussions = result.data if result.data else []
