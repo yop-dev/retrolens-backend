@@ -1,9 +1,10 @@
 """Discussion endpoints - simplified for initial testing."""
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from app.db.supabase import supabase_client
 from app.schemas.discussion import DiscussionCreate, DiscussionPublic
+from app.core.auth import get_current_user_optional
 
 router = APIRouter()
 
@@ -13,7 +14,8 @@ async def list_discussions(
     limit: int = Query(default=20, le=100),
     offset: int = Query(default=0, ge=0),
     sortBy: Optional[str] = Query(default="created_at"),
-    sortOrder: Optional[str] = Query(default="desc")
+    sortOrder: Optional[str] = Query(default="desc"),
+    current_user: Optional[dict] = Depends(get_current_user_optional)
 ):
     """List all discussions."""
     try:
@@ -24,13 +26,45 @@ async def list_discussions(
         
         desc = sortOrder.lower() == "desc"
         
-        result = supabase_client.table("discussions").select("*").order(sortBy, desc=desc).range(offset, offset + limit - 1).execute()
+        # Get discussions with author info
+        result = supabase_client.table("discussions").select("""
+            id, user_id, category_id, title, body, tags, is_pinned, is_locked, view_count, created_at, updated_at,
+            users!discussions_user_id_fkey(username, avatar_url),
+            discussion_categories!discussions_category_id_fkey(name)
+        """).order(sortBy, desc=desc).range(offset, offset + limit - 1).execute()
         
-        # Map database 'body' field to 'content' for API response
-        discussions = result.data if result.data else []
-        for discussion in discussions:
-            if 'body' in discussion:
-                discussion['content'] = discussion.pop('body', '')
+        discussions = []
+        user_id = current_user.get("sub") if current_user else None
+        
+        for discussion in result.data or []:
+            # Get like count
+            like_count_result = supabase_client.table("likes").select("id", count="exact").eq("discussion_id", discussion["id"]).execute()
+            like_count = like_count_result.count or 0
+            
+            # Check if current user liked this discussion
+            is_liked = False
+            if user_id:
+                user_like = supabase_client.table("likes").select("id").eq("user_id", user_id).eq("discussion_id", discussion["id"]).execute()
+                is_liked = bool(user_like.data)
+            
+            # Get comment count
+            comment_count_result = supabase_client.table("comments").select("id", count="exact").eq("discussion_id", discussion["id"]).execute()
+            comment_count = comment_count_result.count or 0
+            
+            # Map database 'body' field to 'content' for API response
+            discussion_data = {
+                **discussion,
+                "content": discussion.pop("body", ""),
+                "author_username": discussion["users"]["username"] if discussion.get("users") else None,
+                "author_avatar": discussion["users"]["avatar_url"] if discussion.get("users") else None,
+                "category_name": discussion["discussion_categories"]["name"] if discussion.get("discussion_categories") else None,
+                "like_count": like_count,
+                "is_liked": is_liked,
+                "comment_count": comment_count
+            }
+            discussion_data.pop("users", None)
+            discussion_data.pop("discussion_categories", None)
+            discussions.append(discussion_data)
         
         return discussions
     except Exception as e:
@@ -38,19 +72,57 @@ async def list_discussions(
 
 
 @router.get("/{discussion_id}", response_model=DiscussionPublic)
-async def get_discussion(discussion_id: str):
+async def get_discussion(
+    discussion_id: str,
+    current_user: Optional[dict] = Depends(get_current_user_optional)
+):
     """Get a discussion by ID."""
     try:
-        result = supabase_client.table("discussions").select("*").eq("id", discussion_id).single().execute()
+        # Get discussion with author and category info
+        result = supabase_client.table("discussions").select("""
+            id, user_id, category_id, title, body, tags, is_pinned, is_locked, view_count, created_at, updated_at,
+            users!discussions_user_id_fkey(username, avatar_url),
+            discussion_categories!discussions_category_id_fkey(name)
+        """).eq("id", discussion_id).single().execute()
         
         if not result.data:
             raise HTTPException(status_code=404, detail="Discussion not found")
         
-        # Map database 'body' field to 'content' for API response
-        if result.data and 'body' in result.data:
-            result.data['content'] = result.data.pop('body', '')
+        discussion = result.data
+        user_id = current_user.get("sub") if current_user else None
         
-        return result.data
+        # Get like count
+        like_count_result = supabase_client.table("likes").select("id", count="exact").eq("discussion_id", discussion_id).execute()
+        like_count = like_count_result.count or 0
+        
+        # Check if current user liked this discussion
+        is_liked = False
+        if user_id:
+            user_like = supabase_client.table("likes").select("id").eq("user_id", user_id).eq("discussion_id", discussion_id).execute()
+            is_liked = bool(user_like.data)
+        
+        # Get comment count
+        comment_count_result = supabase_client.table("comments").select("id", count="exact").eq("discussion_id", discussion_id).execute()
+        comment_count = comment_count_result.count or 0
+        
+        # Increment view count
+        supabase_client.table("discussions").update({"view_count": discussion["view_count"] + 1}).eq("id", discussion_id).execute()
+        
+        # Map database 'body' field to 'content' for API response
+        discussion_data = {
+            **discussion,
+            "content": discussion.pop("body", ""),
+            "author_username": discussion["users"]["username"] if discussion.get("users") else None,
+            "author_avatar": discussion["users"]["avatar_url"] if discussion.get("users") else None,
+            "category_name": discussion["discussion_categories"]["name"] if discussion.get("discussion_categories") else None,
+            "like_count": like_count,
+            "is_liked": is_liked,
+            "comment_count": comment_count
+        }
+        discussion_data.pop("users", None)
+        discussion_data.pop("discussion_categories", None)
+        
+        return discussion_data
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
 
