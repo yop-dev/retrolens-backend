@@ -3,8 +3,8 @@
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from app.db.supabase import supabase_client
-from app.schemas.discussion import DiscussionCreate, DiscussionPublic
-from app.core.auth import get_current_user_optional
+from app.schemas.discussion import DiscussionCreate, DiscussionPublic, DiscussionUpdate
+from app.core.auth import get_current_user_optional, get_current_user
 
 router = APIRouter()
 
@@ -158,5 +158,87 @@ async def create_discussion(
             response_data['content'] = response_data.pop('body', '')
         
         return response_data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/{discussion_id}")
+async def update_discussion(
+    discussion_id: str,
+    user_id: str = Query(..., description="User ID (Clerk ID)"),
+    body: DiscussionUpdate = Body(...)
+):
+    """Update a discussion. Only the author can update their discussion."""
+    try:
+        # First, check if the discussion exists and belongs to the user
+        existing_result = supabase_client.table("discussions").select("user_id").eq("id", discussion_id).single().execute()
+        
+        if not existing_result.data:
+            raise HTTPException(status_code=404, detail="Discussion not found")
+        
+        if existing_result.data["user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="You can only edit your own discussions")
+        
+        # Prepare update data
+        update_data = body.model_dump(exclude_none=True)
+        
+        # Map 'content' field to 'body' for database
+        if 'content' in update_data:
+            update_data['body'] = update_data.pop('content')
+        
+        # Add updated_at timestamp
+        from datetime import datetime
+        update_data['updated_at'] = datetime.utcnow().isoformat()
+        
+        # Update the discussion
+        result = supabase_client.table("discussions").update(update_data).eq("id", discussion_id).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=400, detail="Failed to update discussion")
+        
+        # Map database 'body' field back to 'content' for API response
+        response_data = result.data[0]
+        if 'body' in response_data:
+            response_data['content'] = response_data.pop('body', '')
+        
+        return response_data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/{discussion_id}")
+async def delete_discussion(
+    discussion_id: str,
+    user_id: str = Query(..., description="User ID (Clerk ID)")
+):
+    """Delete a discussion. Only the author can delete their discussion."""
+    try:
+        # First, check if the discussion exists and belongs to the user
+        existing_result = supabase_client.table("discussions").select("user_id").eq("id", discussion_id).single().execute()
+        
+        if not existing_result.data:
+            raise HTTPException(status_code=404, detail="Discussion not found")
+        
+        if existing_result.data["user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="You can only delete your own discussions")
+        
+        # Delete related data first (comments, likes)
+        # Delete comments
+        supabase_client.table("comments").delete().eq("discussion_id", discussion_id).execute()
+        
+        # Delete likes
+        supabase_client.table("likes").delete().eq("discussion_id", discussion_id).execute()
+        
+        # Delete the discussion
+        result = supabase_client.table("discussions").delete().eq("id", discussion_id).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=400, detail="Failed to delete discussion")
+        
+        return {"message": "Discussion deleted successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
