@@ -72,9 +72,12 @@ async def list_comments(
         elif camera_id:
             query = query.eq("camera_id", camera_id)
         
-        result = query.order("created_at", desc=False).range(offset, offset + limit - 1).execute()
+        result = query.order("created_at", desc=False).execute()
         
-        comments = []
+        # Process all comments and build the threaded structure
+        all_comments = []
+        comments_by_id = {}
+        
         for comment in result.data or []:
             # Get like count for each comment
             like_count_result = supabase_client.table("likes").select("id", count="exact").eq("comment_id", comment["id"]).execute()
@@ -107,12 +110,31 @@ async def list_comments(
                 "author_username": author_username,
                 "author_avatar": author_avatar,
                 "like_count": like_count,
-                "is_liked": False  # Will be set by frontend based on current user
+                "is_liked": False,  # Will be set by frontend based on current user
+                "replies": []  # Initialize replies array
             }
             comment_data.pop("users", None)
-            comments.append(comment_data)
+            
+            all_comments.append(comment_data)
+            comments_by_id[comment["id"]] = comment_data
         
-        return comments
+        # Build the threaded structure
+        root_comments = []
+        
+        for comment in all_comments:
+            if comment["parent_id"]:
+                # This is a reply, add it to its parent's replies
+                parent_comment = comments_by_id.get(comment["parent_id"])
+                if parent_comment:
+                    parent_comment["replies"].append(comment)
+            else:
+                # This is a root comment
+                root_comments.append(comment)
+        
+        # Apply pagination to root comments only
+        paginated_comments = root_comments[offset:offset + limit]
+        
+        return paginated_comments
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
