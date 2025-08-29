@@ -64,7 +64,7 @@ async def list_comments(
         
         query = supabase_client.table("comments").select("""
             id, user_id, discussion_id, camera_id, parent_id, body, is_edited, created_at, updated_at,
-            users!comments_user_id_fkey(username, avatar_url)
+            users(username, avatar_url)
         """)
         
         if discussion_id:
@@ -80,10 +80,32 @@ async def list_comments(
             like_count_result = supabase_client.table("likes").select("id", count="exact").eq("comment_id", comment["id"]).execute()
             like_count = like_count_result.count or 0
             
+            # Handle missing user data gracefully
+            author_username = None
+            author_avatar = None
+            
+            if comment.get("users") and comment["users"]:
+                author_username = comment["users"].get("username")
+                author_avatar = comment["users"].get("avatar_url")
+            
+            # If we still don't have username, try to get it directly from users table
+            if not author_username:
+                try:
+                    user_result = supabase_client.table("users").select("username, avatar_url").eq("id", comment["user_id"]).execute()
+                    if user_result.data and len(user_result.data) > 0:
+                        author_username = user_result.data[0].get("username")
+                        author_avatar = user_result.data[0].get("avatar_url")
+                except Exception:
+                    pass
+            
+            # Final fallback - ensure we always have a username
+            if not author_username:
+                author_username = f"User_{comment['user_id'][:8]}" if len(comment['user_id']) >= 8 else f"User_{comment['user_id']}"
+            
             comment_data = {
                 **comment,
-                "author_username": comment["users"]["username"] if comment.get("users") else None,
-                "author_avatar": comment["users"]["avatar_url"] if comment.get("users") else None,
+                "author_username": author_username,
+                "author_avatar": author_avatar,
                 "like_count": like_count,
                 "is_liked": False  # Will be set by frontend based on current user
             }
@@ -122,6 +144,45 @@ async def create_comment(
         if not await check_users_follow_each_other(user_id, content_owner_id):
             raise HTTPException(status_code=403, detail="You can only comment on posts from users you mutually follow")
         
+        # Ensure user exists in database - get user info from current_user token
+        user_username = current_user.get("username") or current_user.get("name") or current_user.get("email", "").split("@")[0]
+        user_avatar = current_user.get("picture") or current_user.get("avatar_url")
+        
+        # Check if user exists in database, if not create/update them
+        existing_user = supabase_client.table("users").select("id, username, avatar_url").eq("id", user_id).execute()
+        if not existing_user.data:
+            # Create user if doesn't exist
+            try:
+                user_data = {
+                    "id": user_id,
+                    "username": user_username or f"User_{user_id[:8]}",
+                    "email": current_user.get("email"),
+                    "avatar_url": user_avatar
+                }
+                supabase_client.table("users").insert(user_data).execute()
+            except Exception as e:
+                # If user creation fails, we'll rely on fallback logic
+                print(f"Failed to create user {user_id}: {e}")
+        else:
+            # Update user info if it's missing
+            existing_user_data = existing_user.data[0]
+            update_needed = False
+            update_data = {}
+            
+            if not existing_user_data.get("username") and user_username:
+                update_data["username"] = user_username
+                update_needed = True
+            
+            if not existing_user_data.get("avatar_url") and user_avatar:
+                update_data["avatar_url"] = user_avatar
+                update_needed = True
+            
+            if update_needed:
+                try:
+                    supabase_client.table("users").update(update_data).eq("id", user_id).execute()
+                except Exception as e:
+                    print(f"Failed to update user {user_id}: {e}")
+        
         # Create the comment
         comment_insert_data = {
             "user_id": user_id,
@@ -140,14 +201,42 @@ async def create_comment(
         comment_id = result.data[0]["id"]
         comment_result = supabase_client.table("comments").select("""
             id, user_id, discussion_id, camera_id, parent_id, body, is_edited, created_at, updated_at,
-            users!comments_user_id_fkey(username, avatar_url)
+            users(username, avatar_url)
         """).eq("id", comment_id).single().execute()
         
         comment = comment_result.data
+        
+        # Fallback to current_user data if database user info is missing
+        author_username = None
+        author_avatar = None
+        
+        if comment.get("users") and comment["users"]:
+            author_username = comment["users"].get("username")
+            author_avatar = comment["users"].get("avatar_url")
+        
+        # If we still don't have username, try to get it directly from users table
+        if not author_username:
+            try:
+                user_result = supabase_client.table("users").select("username, avatar_url").eq("id", user_id).execute()
+                if user_result.data and len(user_result.data) > 0:
+                    author_username = user_result.data[0].get("username")
+                    author_avatar = user_result.data[0].get("avatar_url")
+            except Exception:
+                pass
+        
+        # Fallback to token data
+        if not author_username:
+            author_username = user_username
+            author_avatar = user_avatar
+        
+        # Final fallback - ensure we always have a username
+        if not author_username:
+            author_username = f"User_{user_id[:8]}" if len(user_id) >= 8 else f"User_{user_id}"
+        
         return {
             **comment,
-            "author_username": comment["users"]["username"] if comment.get("users") else None,
-            "author_avatar": comment["users"]["avatar_url"] if comment.get("users") else None,
+            "author_username": author_username,
+            "author_avatar": author_avatar,
             "like_count": 0,
             "is_liked": False
         }
