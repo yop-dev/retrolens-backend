@@ -7,6 +7,7 @@ from app.api.api_v1.endpoints import (
     users,
     cameras,
     discussions,
+    discussions_optimized,
     comments,
     upload,
     categories,
@@ -23,6 +24,7 @@ api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(test_sync.router, prefix="/test", tags=["test"])
 api_router.include_router(cameras.router, prefix="/cameras", tags=["cameras"])
 api_router.include_router(discussions.router, prefix="/discussions", tags=["discussions"])
+api_router.include_router(discussions_optimized.router, prefix="/discussions", tags=["discussions-optimized"])
 api_router.include_router(comments.router, prefix="/comments", tags=["comments"])
 api_router.include_router(categories.router, prefix="/categories", tags=["categories"])
 api_router.include_router(upload.router, prefix="/upload", tags=["upload"])

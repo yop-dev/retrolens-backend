@@ -1,3 +1,7 @@
+# MD FILES
+backend\migrations\add_images_column.sql
+backend\migrations\performance_indexes_corrected.sql
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
